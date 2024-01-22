@@ -1,0 +1,172 @@
+//
+//             SCORE
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+//______________________________________________________________when antescofo.play==1________________________________________________________//
+//___________________________________________________________________________________________________________________________________________//
+
+@INSERT "../code/LiveAPI_Fun.txt"
+@INSERT "../code/Antescofo_PROCESSES_2.txt"
+
+@global $automation_1 := $default_directory + "/automation_nimid 159_e--27-8-15-42.data.asco.txt"
+@global $automation_2 := $default_directory + "/automation_nimid 171_y--6-9-12-50.data.asco.txt"
+@global $automation_Az1 := $default_directory + "/automation_nim__id 2034__parameter_name__18-Audio SPAT Spatial MC Azimuth@16October2023.14h7.data.asco.txt"
+@global $automation_Dist1 := $default_directory + "/automation_nim__id 2035__parameter_name__18-Audio SPAT Spatial MC Distance@16October2023.14h7.data.asco.txt"
+@global $automation_Az2 := $default_directory + "/automation_nim__id 2034__parameter_name__18-Audio SPAT Spatial MC Azimuth@26October2023.11h41.data.asco.txt"
+@global $automation_Dist2 := $default_directory + "/automation_nim__id 2035__parameter_name__18-Audio SPAT Spatial MC Distance@26October2023.11h41.data.asco.txt"
+@global $automation_Az3 := $default_directory + "/automation_nim__id 2034__parameter_name__18-Audio SPAT Spatial MC Azimuth@26October2023.11h49.data.asco.txt"
+@global $automation_Dist3 := $default_directory + "/automation_nim__id 2035__parameter_name__18-Audio SPAT Spatial MC Distance@26October2023.11h49.data.asco.txt"
+@global $automation_Az4 := $default_directory + "/automation_nim__id 2034__parameter_name__18-Audio SPAT Spatial MC Azimuth@26October2023.12h53.data.asco.txt"
+@global $automation_Dist4 := $default_directory + "/automation_nim__id 2035__parameter_name__18-Audio SPAT Spatial MC Distance@26October2023.12h53.data.asco.txt"
+
+@global $id := 0
+@print("=== Test Session === ", $id)
+
+
+@preload_automation($automation_1)
+@preload_automation($automation_2)
+@preload_automation($automation_Az1)
+@preload_automation($automation_Dist1) 
+@preload_automation($automation_Az2)
+@preload_automation($automation_Dist2) 
+@preload_automation($automation_Az3)
+@preload_automation($automation_Dist3) 
+@preload_automation($automation_Az4)
+@preload_automation($automation_Dist4) 
+
+BPM 96
+EVENT 1 "ENA"
+LiveAPI live_set tempo 96.
+LiveAPI live_set signature_numerator 8
+LiveAPI live_set signature_denominator 8
+
+@LiveAPI(["TAPES", "mixer_device", "track_activator"], 1)
+@LiveAPI(["TAPES", "mixer_device", "track_activator"], 1)
+@LiveAPI(["TAPES", "mixer_device", "track_activator"], 1)
+@LiveAPI(["TAPES", "mixer_device", "track_activator"], 1)
+
+@LiveAPI(["Tapes-1", "Sender 5", "Gain"], 0.708)
+@LiveAPI(["Tapes-2", "Sender 6", "Gain"], 0.708)
+@LiveAPI(["Tapes-3", "Sender 4", "Gain"], 0.708)
+@LiveAPI(["Tapes-3", "Sender 6", "Gain"], 0.708)
+@LiveAPI(["Tapes-3", "Sender 7", "Gain"], 0.708)
+
+::curveAPI(["Tapes-1", "mixer_device", "sends", "A-CHAINS-1"], 0., 6000, 0.708, "linear")
+::curveAPI(["Tapes-2", "mixer_device", "sends",  "B-CHAINS-2"], 0., 6000, 0.708, "cubic_out")
+::curveAPI(["Tapes-3", "mixer_device", "sends",  "C-Long"], 0., 6000, 0.708, "quad_out")
+
+Group dp.SPAT
+{
+random1 1
+random2 1
+random3 1
+random4 1
+
+center_x1 1.
+center_x2 1.
+center_x3 1.
+center_x4 1.
+
+center_y1 1.
+center_y2 1.
+center_y3 1.
+center_y4 1.
+
+extent_x1 -0.5
+extent_x2 0.5
+extent_x3 0.5
+extent_x4 -0.5
+
+extent_y1 0.5
+extent_y2 0.5
+extent_y3 -0.5
+extent_y4 -0.5
+}
+
+BPM 120
+EVENT 1 "DYO"
+LiveAPI live_set tempo 120.
+LiveAPI live_set signature_numerator 3
+LiveAPI live_set signature_denominator 4
+
+@LiveAPI(["Tapes-1", "mixer_device", "volume"], 0.)
+@LiveAPI(["Tapes-2", "mixer_device", "volume"], 0.)
+@LiveAPI(["Tapes-3", "mixer_device", "volume"], 0.)
+
+@LiveAPI(["Tapes-1", "mixer_device", "sends", "A-FRONT"], 0.)
+@LiveAPI(["Tapes-2", "mixer_device", "sends",  "B-REAR"], 0.)
+@LiveAPI(["Tapes-3", "mixer_device", "sends",  "B-REAR"], 0.)
+::curveAPI(["Tapes-1", "mixer_device", "sends", "A-CHAINS-1"], 0.708, 6000, 0., "linear")
+::curveAPI(["Tapes-2", "mixer_device", "sends",  "B-CHAINS-2"], 0.708, 6000, 0., "cubic_out")
+::curveAPI(["Tapes-3", "mixer_device", "sends",  "C-Long"], 0.708, 6000, 0., "quad_out")
+::curveAPI(["Tapes-1", "mixer_device", "sends", "A-CHAINS-2"], 0., 6000, 0.708, "quad")
+::curveAPI(["Tapes-2", "mixer_device", "sends",  "B-CHAINS-1"], 0., 6000, 0.708, "cubic_in")
+::curveAPI(["Tapes-3", "mixer_device", "sends",  "C-Short"], 0., 6000, 0.708, "quad_in")
+
+EVENT 3 "TRIA"
+LiveAPI live_set tempo 80.
+LiveAPI live_set signature_numerator 5
+LiveAPI live_set signature_denominator 4
+
+::curveAPI(["Tapes-1", "mixer_device", "volume"], 0., 6000, 0.708, "quad")
+::curveAPI(["Tapes-2", "mixer_device", "volume"], 0., 6000, 0.708, "quad")
+::curveAPI(["Tapes-3", "mixer_device", "volume"], 0., 6000, 0.708, "quad")
+::curveAPI(["FRONT", "mixer_device", "volume"], 0., 6000, 0.708, "linear")
+::curveAPI(["SIDE", "mixer_device", "volume"], 0., 6000, 0.708, "linear")
+::curveAPI(["REAR", "mixer_device", "volume"], 0., 6000, 0.708, "quad")
+
+::curveAPI(["Tapes-1", "mixer_device", "sends", "A-CHAINS-1"], 0., 6000, 0.708, "linear")
+::curveAPI(["Tapes-2", "mixer_device", "sends",  "B-CHAINS-2"], 0., 6000, 0.708, "cubic_out")
+::curveAPI(["Tapes-3", "mixer_device", "sends",  "C-Long"], 0., 6000, 0.708, "quad_out")
+
+
+EVENT 3 "4"
+abort ::curveAPI
+
+::curveAPI(["Tapes-1", "mixer_device", "sends", "B-CHAINS-2"], 0.708, 6000, 0., "linear")
+::curveAPI(["Tapes-2", "mixer_device", "sends",  "A-CHAINS-1"], 0.708, 6000, 0., "linear")
+::curveAPI(["Tapes-3", "mixer_device", "sends",  "A-CHAINS-1"], 0.708, 6000, 0., "quad_out")
+
+
+
+EVENT 20 "Replay automation 1"
+abort ::curveAPI
+
+::replay_automation(["Tapes-1", "mixer_device", "sends", "A-CHAINS-2"], 
+                    file = $automation_2)
+::replay_automation(["Tapes-2", "mixer_device", "sends",  "A-CHAINS-1"], 
+                    file = $automation_2)
+::replay_automation(["Tapes-3", "mixer_device", "sends",  "C-Short"], 
+                    file = $automation_2)
+
+EVENT 20 "Replay automation 2"
+
+::extended_replay(["Tapes-1", "mixer_device", "sends", "A-CHAINS-1"], 
+                    file = $automation_2, 
+                    compression = 0.3)
+::extended_replay(["Tapes-2", "mixer_device", "sends", "A-CHAINS-2"], 
+                    file = $automation_1, 
+                    compression = 0.4)
+::extended_replay(["Tapes-3", "mixer_device", "sends", "C-Long"], 
+                    file = $automation_1, 
+                    compression = 0.5)
+
+
+EVENT 100 "Randomize Parameter A"
+
+::randomLFO(["Tapes-1", "mixer_device", "volume"], 0.708, ratio = 10.0, speed = 0.7, direction = "negative", port = 1.)
+::randomLFO(["Tapes-2", "mixer_device", "volume"], 0.1, ratio = 80.0, speed = 0.5, direction = "positive", port = 1.)
+::randomLFO(["Tapes-3", "mixer_device", "volume"], 0.43, ratio = 10.0, speed = 2., direction = "bipolar", port = 0.5)
+
+
+EVENT 100 "Map MIDI-Note to Freqs"
+
+::mapAPI(["Emotional", "Analysis", "MIDI-Note"], ["A-CHAINS-1", "Audio Effect Rack", "Disto", "Auto Filter", "Frequency"], setmin =50., setmax =120.)
+
+EVENT 100 "SPAT"
+::extended_replay(["SPAT", "SPAT Spatial MC", "Azimuth"], 
+                    file = $automation_Az4, compression = 0.7, speed = 2.)
+::extended_replay(["SPAT", "SPAT Spatial MC", "Distance"], 
+                    file = $automation_Dist4, compression = 0.7, speed = 2.)
+

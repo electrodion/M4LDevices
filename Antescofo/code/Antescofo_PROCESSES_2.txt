@@ -1,0 +1,178 @@
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          Processes
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+; Variables
+$duration_tab := @make_duration_tab()
+$event_duration := @make_duration_tab()
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          CURVE
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+;; ::curveAPI(["TRACK", "Audio Effect Rack", "CHAIN", "DEVICE", "PARAMETER"], 100.0, 10000, 0., "linear")
+
+@proc_def ::curveAPI($path, $start, $duration, $end, $curve_type) ;@exclusive
+{
+    @local $value
+    curve curve_API
+    @action := {
+        @LiveAPI($path, $value)
+    }  
+    @grain := 0.02 s
+    {
+        $value
+        {
+                  {$start} @type $curve_type 
+            $duration ms {$end}  
+        }
+    }
+}
+
+
+;::curve(["receiver", "arg"], 100.0, 10000, 0., "linear")
+@proc_def ::curve($receiver, $arg, $start, $duration, $end, $curve_type) 
+{
+    @local $val
+    curve curve_parameter
+    @action := {
+        @command($receiver) $arg $val
+    }  
+    @grain := 0.02 s
+    {
+        $val
+        {
+                         {$start} @type $curve_type 
+            $duration ms {$end}  
+        }
+    }
+}
+
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          ADSR 
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+;; ::curveAPI(["TRACK", "Audio Effect Rack", "CHAIN", "DEVICE", "PARAMETER"], 100.0, 10000, 0., "linear")
+
+@proc_def ::adsrAPI($path, $start, $a, $t1, $end, $d, $t2, $s, $r, $t3) ;@exclusive
+{
+    @local 
+    $value,
+    $sus
+    $sus := $s * $end
+    curve adsr_API
+    @action := {
+        @LiveAPI($path, $value)
+    }  
+    @grain := 0.02 s
+    {
+        $value
+        {
+                  {$start} @type $t1 
+            $a ms {$end}   @type $t2
+        	$d ms {$sus}   @type $t3 
+        	$r ms {$start} 
+        	}
+    }
+}
+
+@proc_def ::adsr($receiver, $arg, $start, $a, $t1, $end, $d, $t2, $s, $r, $t3) ;@exclusive
+{
+    @local $value
+    curve adsr
+    @action := {
+        @command($receiver) $arg $val
+    }  
+    @grain := 0.02 s
+    {
+        $value
+        {
+                  {$start} @type $t1
+            $a ms {$end}   @type $t2    
+        	$d ms {$sus}   @type $t3     
+        	$r ms {$start}      
+        	}
+    }
+}
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          Randomize
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+
+@fun_def @kill_play($path)
+{
+	if ($current_replay.is_defined($path)) { abort ($current_replay($path)) }
+}
+
+@proc_def ::randomLFO($path, $value, $ratio =10.0, $speed =1.0, $direction ="bipolar", $port =0.1) 
+{
+	if ($current_replay.is_defined($path)) { abort ($current_replay($path)) }
+    $current_replay.insert($path, $MYSELF)
+    
+    @local 
+
+    $curve_tab := tab["back", "back_in", "back_in_out", "back_out", "exp", "exp_in", "exp_in_out", "exp_out", "quart", "quart_in", "quart_in_out", "quart_out", "cubic", "cubic_in", "cubic_in_out", "cubic_out", "quad", "quad_in", "quad_in_out", "quad_out"],
+    $rand_curve := $curve_tab[@rand_int($curve_tab.size())],
+    $v := $value
+
+	Loop $speed
+    @exclusive
+	{
+		@local 
+        $val,
+        $p := $path.compute_path(),
+        $id := $live_path_2_id($p),
+		;$id := $live_path_2_id($path), 
+		$item := $live_id($id),
+		$min := $item[2],
+		$max := $item[3],
+        $range := $max - $min,
+        $current := $v    
+        
+        print ITER $NOW from current $current
+
+		switch ($direction)
+		{
+			case "bipolar":
+				$val := $value + 2 *(@random() - 0.5)*($ratio/100.0)*$value
+			case "positive":
+				$val := $value + @random()*($ratio/100.0)*$value
+			case "negative":
+				$val := $value - @random()*($ratio/100.0)*$value
+		}
+        if ($val < $min) { $val := $min }
+        if ($val > $max) { $val := $max } 
+
+    ;@local    
+    ;$rnd := @pow(@rand_int(2), 2),
+    ;$glide := ($rnd) * $port 
+
+	Curve interp
+        @grain := 0.02 s
+        @action :=  { 
+            @print("sampling random LFO ",  $v)
+            @LiveAPI($path, $v)
+                    }
+        {
+        $v 
+            {     
+                {$current} @type $rand_curve 
+        $port    {$val}
+            }                 
+        } 
+    }
+}

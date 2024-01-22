@@ -1,0 +1,640 @@
+/*
+LIVE.API FUNCTIONS
+2023, Paris
+Jean-Louis Giavitto, Myrmeleotettix            
+*/
+
+; Track symbol PITCHED, Chain symbol SpOgs, Device symbol SpOgs_Sogs-1, Parameter symbol Dry/Wet, Value 35
+; Avoid putting tempo to 0 when no external info is arriving
+antescofo::bypass_temporeset "on"
+
+;_ := @print("print INIT_1")
+
+@global $debug := true
+@global $duration_map := @make_label_duration()
+@global $THIS_EVENT := 0
+
+; print duration_map ("" + $duration_map)
+
+// Ce tempo représente le tempo de Live. Il doit être changé par un setvar quand le tempo de live change
+BPM 120
+@global $LIVE_TEMPO:= 120.0
+LiveAPI live_set tempo 120.0
+
+whenever ($LIVE_TEMPO == $LIVE_TEMPO)
+{
+    antescofo::tempo $LIVE_TEMPO
+    @print ("Tempo is set to ", $LIVE_TEMPO, " BPM")
+}
+
+whenever ($LAST_EVENT_LABEL == $LAST_EVENT_LABEL)
+{
+    @print("SCENE ", $LAST_EVENT_LABEL, " is_triggered. Has a duration of ", $duration_map($LAST_EVENT_LABEL), " beats. ")
+  ;print "live_path " ($live_path.is_map())
+  ;print "live_config " ($live_config.is_map())
+  ;print "duration_map " ($duration_map.is_map())
+}
+
+whenever ($pause)
+{
+    @print("SCORE StOPpED")
+    abort ::replay_automation
+    abort ::extended_replay
+    abort ::randomLFO
+    abort ::curveAPI
+    abort ::curve
+}
+
+
+whenever ($BEAT_POS == $BEAT_POS)
+{
+    @print("change event")
+    abort ::replay_automation
+    abort ::extended_replay
+    abort ::randomLFO
+    abort ::curveAPI
+    abort ::curve
+}
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          MAKE PATH whenever Snaphot
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+;_ := @print("print INIT_2")
+@global $live_path @persistent
+@global $live_id @persistent
+@global $live_path_2_id @persistent
+@global $live_id_2_path @persistent
+
+if ($live_path.is_undef()) 
+{ 
+    @print ("Automatic initialization of Live API. Assuming a snapshot exists at: ", @current_load_directory() + "../snapshots/current_snapshot.json")
+    $live_id := MAP{} 
+    $live_path_2_id:= MAP{} 
+    $live_id_2_path:= MAP{} 
+    $live_path := MAP{} 
+    $ret := @read_snapshot_file (@current_load_directory() + "../snapshots/current_snapshot.json")
+    if ($ret.is_map())
+    {
+        @print("Init live API OK")
+    }
+    else
+    {
+        @print("No viable snapshot. Make one and load it manually")
+    }
+}
+else
+{
+    @print("Viable snapshot is: ", $live_path)
+}
+
+_ := @print("START launched ")
+
+// Create snapshot dictionnary
+;@global $snapshot_i := 1
+whenever ($launch_snapshot == $launch_snapshot)
+{
+    ;$d := @time()
+    $snapshot_name := @current_load_directory() + "../snapshots/" + "current_snapshot" + ".json"
+    ;$snapshot_i += 1
+    @print("SNAPSHOT procedure triggered. PLEASE WAIT...  ")
+    trigger_snapshot $snapshot_name 
+}
+
+// Read the last saved snapshot dictionnary after start
+whenever ($snapshot_done == $snapshot_done)
+{ @read_snapshot_file($snapshot_name)}
+
+
+@fun_def read_snapshot_file($snapshot_file)
+{
+    $live_path := MAP{}
+    $live_path_2_id := MAP{}
+    ;@print("Snapshot Recorded In File : ", $snapshot_file)
+
+    $live_snapshot := @json_read($snapshot_file)
+    if ($live_snapshot.is_map())
+    {
+        ;@print("received snapshot of size ", $live_snapshot.size(), " file ", $snapshot_file)
+        forall $key, $info in $live_snapshot
+            {
+            @local 
+            $id := $info[0],
+            $path := $key,
+            $last := $info.take(-3),
+            $val := $last[0],
+            $min := $last[1],
+            $max := $last[2],
+            $item := [$id, $val, $min, $max]
+
+            if ($info.size() < 3)
+            { @print("Error processing SNAPSHOT : entry ", $key, " with less than 3 elements: ", $info) }
+
+            // print "add live api parameter " $path
+
+            $live_path.insert($path, $item)
+            $live_path_2_id.insert($path, $id)
+            $live_id_2_path.insert($id, $path)
+            $live_id.insert($id, $item)
+            }
+        @print("SNAPSHOT procedure finalized. You can now access Live API identifiers by their arborescence path. Antescofo recorded max dictionary with ", $live_path_2_id.size(), " entries in file : ", $snapshot_file)
+        return true
+    }
+    else
+    {
+        @print("Reading snapshot failed: " + $snapshot_file)
+        return false
+    }
+}
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//SEND MESSAGE TO LIVE
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+/*
+@LiveAPI(["Track", "Audio Effect Rack", "Chain", "Device", "Parameter"], 100.0)
+OR
+$my_compressor := "Track", "Audio Effect Rack", "Chain", "Device", "Parameter"]
+@LiveAPI([$my_compressor  100.0)
+*/
+@fun_def compute_path($p)
+{
+    if ($p.size() == 1) { return $p[0] }
+    else
+    {
+        return ($p[0] + " " + $p.drop(1).compute_path())
+    }
+}
+
+@fun_def @LiveAPI($path, $value)
+{
+    @local 
+        $p := $path.compute_path(),
+        $id := $live_path_2_id($p),
+        $item := $live_id($id),
+        $min := $item[2],
+        $max := $item[3]
+
+        ;@print("LiveAPI compute ", $p, " from path", $path)
+
+    if ($id.is_undef())
+    {
+      @print("send parameter value to path  " + $path + " is unexpected (a)")
+      ; @print("actual dico is  + $live_path_2_id)
+      return <undef>
+    }
+    else
+    { 
+        if ($value < $min) { $value := $min }
+        if ($value > $max) { $value := $max }
+
+        LiveAPI API $id Value $value
+       ; @print("send message LiveAPI to adress ", $path, " with identifier ", $id, " and Value ", $value)
+    }
+}
+
+; This function will actually normalize the parameter values (minmax = 0.-1.). In case of normalized nims cf replay_automation
+@fun_def @LiveAPInormal($path, $value)
+{
+    @local 
+        $p := $path.compute_path(),
+        $id := $live_path_2_id($p)
+        ;@print("LiveAPI compute ", $p, " from path", $path)
+
+    if ($id.is_undef())
+    {
+      @print("send parameter value to path  " + $path + " is unexpected (b)")
+      ; @print("actual dico is " + $live_path_2_id)
+      return <undef>
+    }
+    else
+    { 
+        @local
+        $item := $live_id($id),
+        $min := $item[2],
+        $max := $item[3],
+        $nvalue := $value * ($max - $min) + $min
+        @assert $nvalue.is_numeric()
+
+        if ($nvalue < $min) { $nvalue := $min }
+        if ($nvalue > $max) { $nvalue := $max }
+
+        LiveAPI API $id Value $nvalue
+       ; @print("send message LiveAPI to adress ", $path, " with identifier ", $id, " and Value ", $value)
+    }
+}
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          RECORD AUTOMATION
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+// Recording parameter automation 
+
+// On recoit les paramètres à enregistrer sur cette variable
+// Attention, on peut enregistrer plusieurs paramètres simultanément
+@global $recorded_data 
+@global $default_directory := @current_load_directory() + "../recorded/"
+
+// Un dico qui associe la nim qui enregistre le paramètre à l'identificateur du paramètre
+@global $current_nims := MAP{}
+
+// Un dico qui associe la date d'occurence du dernier paramètre reçu à l'identificateur de celui-ci
+ $last_input_dates := MAP{}
+
+@fun_def @last_date($id)
+{
+    @local $date := $last_input_dates($id)
+    $last_input_dates.insert($id, $NOW)
+    @print("register date ", $NOW, " for parameter ", $id, " previous is ", $date)
+    if ($date.is_undef())
+    {
+        return 0.0
+
+    }
+    else
+    {
+        return $date
+    }
+}
+
+@proc_def ::record_automation() 
+@exclusive
+@abort {
+    // quand le processus est tué, cette clause est activé et on sauve les trajectoires stocke dans $current_nims dans un fichier
+    forall $key, $nim in $current_nims
+    {
+        @local $file, $d := @time(), $name := $live_id_2_path($key)
+        if ($name.is_undef())
+        {
+            @print("Pb with parameter " + $key + " name: " + $live_id_2_path($key))
+            $name := "unknown_parameter" 
+        }        
+        $file := ($default_directory + "automation_nim" \
+                    + "__" + $key + "__" + "parameter_name__" + $name \
+                    + "@" \
+                    + $d("mday") + $d("month") + $d("year") + "." + $d("hour") + "h" + $d("min") \
+                    + ".data.asco.txt") 
+        _ := @dump($file, $nim)
+        @print("=========== AUTOMATION SAVED ", $file, " =================")
+    }
+    $current_nims := MAP{}
+    $last_input_dates := MAP{}
+}
+{
+    @local $elapsed := 0.0
+
+    if (! $live_id.is_map())
+    {
+        @print("Please trigger SNAPSHOT procedure ...: " + $live_id)
+        abort $MYSELF
+    }
+    @print("=== START RECORDING ===")
+    whenever ($recorded_data == $recorded_data)
+    {
+        @local $nim, $min, $max
+        if (!$recorded_data.is_tab() || $recorded_data.size() != 2)
+        {
+            @print("ERRoR ! Bad input data for recording automation : " + $recorded_data)
+        }
+        else
+        {
+            @local 
+                $key := $recorded_data[0], 
+                $value := $recorded_data[1],
+                $item := $live_id($key),
+                $min := $item[2],
+                $max := $item[3],
+                $nvalue := ($value - $min)/($max - $min),
+                $elapsed := $NOW - @last_date($key)
+
+            @print("Get recorded data ", $recorded_data, 
+                " parse key ", $key, 
+                " value ", $value, 
+                " elapsed ", $elapsed, 
+                " min ", $min, 
+                " max ", $max, " item " + $item)
+
+            if (! $live_id.is_defined($key))
+            {
+              @print("Parameter ", $key, " not in config dictionary")
+              @print("snapshot: " + $live_id.take(512))
+              abort $MYSELF
+            }
+            if (!$min.is_numeric() || !$max.is_numeric() || !$nvalue.is_numeric())
+            {
+                @print("Error in retrieving min max for ", $key, " item ", $item, " min ", $min, " max ", $max)
+                $min := 0.
+                $max := 1.
+            }
+
+            if ($current_nims.is_defined($key))
+            { 
+                $nim := $current_nims($key) 
+                @print ("retrieve nim ", $nim)
+            }
+            else
+            {
+                $nim := NIM{ 0 $nvalue,  0 $nvalue }
+                $current_nims.insert($key, $nim)
+                @print ("create nim ", $nim, " and dico value ", $current_nims($key), " dico = ", $current_nims)
+            }
+            $nim.push_back($elapsed, $nvalue)
+            @print ("--- save a new value for " + $key + ": " + $nvalue)
+        }
+        print "at " $NOW "elapsed = " $elapsed " automation == " ("" + $recorded_data)
+    }
+}
+
+whenever ($REC == $REC)
+{
+    if ($REC) { 
+        ::record_automation() 
+    }
+    else { 
+        @print("=== END RECORDING ===")
+        abort ::record_automation 
+    }
+}
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          Preload automation
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+$current_replay := MAP{}
+
+@global $preload_nim := MAP{}
+
+@fun_def @preload_automation($file)
+{
+    _:= @loadvar($file) 
+    if (!$nim.is_nim())
+    {
+        @print("ERROR ! Nothing to preload: " + $file)
+        return <undef>
+    }
+
+    $preload_nim.insert($file, $nim)
+    @print("Preload " + $file)
+}
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          REPLAY AUTOMATION
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+@proc_def ::replay_automation($path, $value =<undef>, $file =<undef>)
+{
+    @local $duration := $duration_map($LAST_EVENT_LABEL)
+    @local $moi := $MYSELF
+    @local $x, $nim
+
+   if (! $duration_map.is_map())
+   {
+       $duration := (@make_label_duration())($LAST_EVENT_LABEL)
+       @print("Dico is empty ", $duration_map, " duration recompute ", $duration)
+   }
+   ;print Current Label is $LAST_EVENT_LABEL " Has a duration of " $duration "beats"
+   if ($duration.is_undef())
+   {
+       print BAD ("--" + $duration_map) ($duration_map.is_defined($LAST_EVENT_LABEL)) (@find($duration_map, $LAST_EVENT_LABEL))
+   }
+    ;print "========= SIMPLE REPLAY ========="
+    abort ::record_automation ; kill recording (in case it's enabled)
+    if ($file)
+    {
+        // Les parametre sont supposés avoir été pré-chargé dans le dico $preload_nim
+        $value := $preload_nim($file)
+        if ($value.is_undef())
+        {
+            _:= @loadvar($file) 
+            if (!$nim.is_nim())
+            {
+                @print("ERROR ! Nothing to replay: " + $nim + " " + $file)
+                abort $MYSELF
+            }
+            $value := $nim
+            $preload_nim.insert($file, $nim)
+        }
+    } 
+
+    switch ($value) 
+    {
+        case @is_nim:
+            $nim := $value
+        case @is_numeric:
+            @LiveAPInormal($path, $value)
+            abort $MYSELF
+        case @always_true:
+            @print("ERROR ! Nothing to replay: " + $value)
+            abort $MYSELF
+    }
+ 
+    @assert($nim.is_nim())  
+    ;@print(" NIM simple replay " + $nim)
+
+    if ($current_replay.is_defined($path)) { abort ($current_replay($path)) }
+    $current_replay.insert($path, $MYSELF)
+
+    // les durées dans la nim sont enregistré avec le temps physique (cf. ::record_automation())
+    // Pour les jouer à la même vitesse, on doit donc être à un tempo de 60 quelque soit le
+    // tempo d'appel de cette procédure.
+    Group Replay     
+    @tempo 60
+    {
+        @local $durnim := $nim.max_key() - $nim.min_key()
+        @local $i := 1
+        loop $durnim @exclusive
+        {
+            @print("iter replay ", $i, " for " + $path, " period ", $durnim)
+
+            $i += 1
+            Curve 
+            @grain 0.02 s
+            @action { 
+                ;@print("sampling imported automation " + $x)
+                if ($x.is_tab())
+                  { @LiveAPInormal($path, $x[0]) }
+                  else 
+                  { @LiveAPInormal($path, $x) }
+            }
+            {
+                $x : $nim
+            }
+        }
+    }
+}
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          REPLAY TRAJECTORY WITH TRANSFORMATIONS
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+@proc_def ::extended_replay($path, $value =<undef>, $file =<undef>, $speed =1.0, $compression =1.0, $offset =0.0)
+{    
+    @local $duration_event := $duration_map($LAST_EVENT_LABEL)
+
+    @local $moi := $MYSELF
+    @local $v, $nim
+
+   if (! $duration_map.is_map())
+   {
+       $duration := (@make_label_duration())($LAST_EVENT_LABEL)
+       print BAD empty dico (""+$duration_map) duration recompute $duration_event
+   }
+   ;@print(C"urrent Label is ", $LAST_EVENT_LABEL, " has a duration of ", $duration_event, "beats")
+
+   if ($duration_event.is_undef())
+   {
+       print BAD ("--" + $duration_map) ($duration_map.is_defined($LAST_EVENT_LABEL)) (@find($duration_map, $LAST_EVENT_LABEL))
+   }
+
+    ;@print(" Extended REPLAY  @speed ", $speed, "  @compression ", $compression, "  @offset ", $offset, " ")
+    abort ::record_automation 
+
+    if ($file)
+    {
+        // Les parametre sont supposés avoir été pré-chargé dans le dico $preload_nim
+        $nim := $preload_nim($file)
+        if ($nim.is_undef())
+        {
+            _:= @loadvar($file) 
+            if (!$nim.is_nim())
+            {
+                @print("ERROR ! Nothing to (extended) replay: " + $nim + " " + $file)
+                abort $MYSELF
+            }
+
+            $preload_nim.insert($file, $nim)
+        }
+    } else {
+        if ($value.is_nim()) { $nim := $value }
+        else {
+            @print("ERROR ! Bad value for extended replay: " + $value + " " + $file)
+            abort $MYSELF
+        }
+    }
+    ;@print("NIM extended replay  " + $nim)
+
+    @local $start_nim := $nim.min_key()
+    @local $durnim := $nim.max_key() - $start_nim
+    @local $periode := 60. * $durnim / ($LIVE_TEMPO * $speed)
+    @local $i := 0, $lexe := 0
+
+    if ($current_replay.is_defined($path)) { abort ($current_replay($path)) }
+    $current_replay.insert($path, $MYSELF)
+
+    @print("REPLAY: speed ", $speed, " live tempo: " , $LIVE_TEMPO, " = ", $LIVE_TEMPO * $speed, " periode ", $periode)
+    @print("REPLAY: start nim at ", $start_nim, " end nim at ", $nim.max_key())
+
+    Loop Replay $periode s @exclusive
+    {
+        @local $x := $start_nim
+        @local $sample := 0.02
+
+        abort $lexe
+        $i += 1
+       ;  @print("iter extended replay ", $i, " for " + $path, " at tempo ",  $LIVE_TEMPO * $speed, " periode ", $periode, " $NOW=", $NOW, " next iteration at: ", $NOW + $periode)
+
+        $lexe := {
+            loop $sample s 
+            {
+                $periode := 60. * $durnim / ($LIVE_TEMPO * $speed)
+                ; @print("iter extended replay: on envoit x=", $x, " / ", $nim.max_key(), " val: ", $nim($x))
+                @LiveAPInormal($path, $compression * $nim($x) + $offset)
+                $x += $sample * ($LIVE_TEMPO * $speed) / 60.0
+            }
+        }
+    }
+}
+
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+//
+//          Mapping
+//____________________________________________________________________________________________________________________________________________//
+//____________________________________________________________________________________________________________________________________________//
+
+
+
+@proc_def ::mapAPI($path_source, $path_target, $jitter =0., $setmin =<undef>, $setmax =<undef>)
+@abort{
+    @print("=== END MAPPING ", $id_source, " to parameter ", $id_target, " ===")
+    @print("Set manually parameter monitoring to OFF (but can be done automatically)")
+}
+{
+    @local 
+        $duration := $duration_map($LAST_EVENT_LABEL),
+        $moi := $MYSELF,
+
+        $key_source := $path_source.compute_path(),
+        $id_source := $live_path_2_id($key_source),
+        $info_source := $live_id($id_source),
+        $min_source := $info_source[2],
+        $max_source := $info_source[3],
+        $range_source := $max_source - $min_source,
+
+        $key_target := $path_target.compute_path(),
+        $id_target := $live_path_2_id($key_target),
+        $info_target := $live_id($id_target),
+        $min_target := ($setmin ? ($setmin < $info_target[2] ? ($info_target[2]) : $setmin) : $info_target[2]),
+        $max_target := ($setmax ? ($setmax > $info_target[3] ? ($info_target[3]) : $setmax) : $info_target[3]),
+        $range_target := $max_target - $min_target
+
+
+    @print("map parameter ", $id_source, " to parameter ", $id_target)
+    if ($id_source.is_undef())
+    {
+        @print("BAD : source path  not found: ", $path_source)
+        @print("Dictionnary is: " + $live_path_2_id)
+        abort $moi
+    }
+        if ($id_target.is_undef())
+    {
+        @print("BAD : source path  not found: ", $path_target)
+        @print("Dictionnary is: " + $live_path_2_id)
+        abort $moi
+    }
+
+    @print("Set manually parameter monitoring to ON (but can be done automatically)")
+
+    whenever ($map_data == $map_data)
+    {
+        if ($map_data[0] == $id_source)
+        {
+            @local 
+                $val := $map_data[1], 
+                $nval := ($val - $min_source)/$range_source,
+                $tval := $nval * $range_target + $min_target,
+                $outval := $tval * (1. + 2*(@random() - 0.5)*($jitter/100.0))
+
+
+            @print("set out parameter ", $id_target, " val: ", $outval, " range ", $min_target, " - ", $max_target, "  natural range", $min_target, " - ", $max_target)
+            LiveAPI API $id_target Value $outval
+        }
+        else
+        {
+            @print("Receive mapping id=", $map_data[0], " which is not monitored")
+        }                           
+    } during [$duration]
+
+    $duration 
+         print "Mapping " $id_source "to " $id_target  " has been explicitly disabled from the score. "
+         abort $moi
+}
+
